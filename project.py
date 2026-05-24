@@ -18,9 +18,7 @@ st.set_page_config(layout="wide", page_title="YouTube Trailer Sentiment Intellig
 @st.cache_resource
 def load_assets():
     model_path = 'model.pkl'
-    # Download model if not present
     if not os.path.exists(model_path):
-        # NOTE: Ensure this URL uses the direct download format
         url = 'https://drive.google.com/uc?export=download&id=13Lb2WECIxXT5NpayZVRx2wXerp8O65fF'
         gdown.download(url, model_path, quiet=False)
     
@@ -28,7 +26,6 @@ def load_assets():
     tokenizer = AutoTokenizer.from_pretrained('distilbert-base-uncased')
     model.eval()
     return model, tokenizer
-
 
 @st.cache_data(ttl=3600)
 def analyze_trailer(url, max_comments):
@@ -38,8 +35,7 @@ def analyze_trailer(url, max_comments):
         comments_data = info.get('comments') or []
         texts = [c.get('text', '') for c in comments_data][:max_comments]
 
-        if not texts:
-            return None, None
+        if not texts: return None, None
 
         meta = {
             'title': info.get('title', 'Unknown'),
@@ -94,61 +90,22 @@ with tab1:
                 m3.metric("Friction Index", f"{(df['sentiment'] == 'Negative').mean() * 100:.1f}%")
                 m4.metric("Neutral Fatigue", f"{(df['sentiment'] == 'Neutral').mean() * 100:.1f}%")
 
-                # 2:1 Layout
-                left_col, right_col = st.columns([2, 1])
+                # ROW 1: Momentum
+                st.subheader("Recency Sentiment Momentum")
+                momentum_score = max(0, min(100, 50 + (metrics['Sentiment Index'] * 0.3)))
+                st.progress(momentum_score / 100)
 
-                with left_col:
-                    momentum_score = max(0, min(100, 50 + (metrics['Sentiment Index'] * 0.3)))
-
-                    # Dynamic color selection based on score
-                    if momentum_score < 33:
-                        num_color = "#D32F2F"
-                    elif momentum_score < 66:
-                        num_color = "#FFC107"
-                    else:
-                        num_color = "#2E7D32"
-
-                    st.markdown("### <span style='color:black'>Recency Sentiment Momentum</span>", unsafe_allow_html=True)
-
-                    # Split gauge and legend
-                    g_col, l_col = st.columns([0.7, 0.3])
-                    with g_col:
-                        fig_gauge = go.Figure(go.Indicator(
-                            mode="gauge+number",
-                            value=round(momentum_score, 1),
-                            number={'font': {'color': num_color, 'size': 50}},
-                            gauge={'axis': {'range': [0, 100]}, 'bar': {'color': num_color},
-                                   'steps': [{'range': [0, 33], 'color': "#F8D7DA"},
-                                             {'range': [33, 66], 'color': "#FFF3CD"},
-                                             {'range': [66, 100], 'color': "#D4EDDA"}]}
-                        ))
-                        fig_gauge.update_layout(height=250, margin=dict(l=20, r=20, t=20, b=20))
-                        st.plotly_chart(fig_gauge, use_container_width=True)
-
-                    with l_col:
-                        st.markdown("""
-                        <div style="margin-top: 50px; font-size: 13px;">
-                        <b>Momentum Guide:</b><br>
-                        🔴 Critical friction (0-33)<br>
-                        🟡 Engagement tepid (34-66)<br>
-                        🟢 High advocacy (67-100)
-                        </div>
-                        """, unsafe_allow_html=True)
-
+                # ROW 2: Word Cloud + Distribution side-by-side
+                row2_col1, row2_col2 = st.columns(2)
+                with row2_col1:
                     st.subheader("Buzzword Cloud")
-                    # Clean text to remove non-ASCII characters to fix rectangle issue
                     clean_text = "".join([char for char in " ".join(df['text']) if ord(char) < 128])
-                    # Increased height to 550 for alignment
-                    wc = WordCloud(width=800, height=550, background_color='white').generate(clean_text)
+                    wc = WordCloud(width=800, height=400, background_color='white').generate(clean_text)
                     st.image(wc.to_array(), use_container_width=True)
-
-                with right_col:
+                with row2_col2:
                     st.subheader("Sentiment Distribution")
-                    fig_hist = px.histogram(df, x="sentiment", color="sentiment",
-                                            color_discrete_map={"Negative": "#D32F2F", "Neutral": "#FFC107",
-                                                                "Positive": "#2E7D32"})
-                    # Height set to 650 to align with the taller WordCloud
-                    fig_hist.update_layout(height=650)
+                    fig_hist = px.histogram(df, x="sentiment", color="sentiment", height=400,
+                                            color_discrete_map={"Negative": "#D32F2F", "Neutral": "#FFC107", "Positive": "#2E7D32"})
                     st.plotly_chart(fig_hist, use_container_width=True)
 
                 st.divider()
@@ -157,27 +114,19 @@ with tab1:
 
 with tab2:
     st.subheader("Individual Comment Audit")
-    txt = st.text_area(
-        "Enter a comment to analyze:",
-        placeholder="e.g., 'This movie looks amazing, can't wait to watch it with my friends!'"
-    )
+    txt = st.text_area("Enter a comment to analyze:", placeholder="e.g., 'This movie looks amazing!'")
     if st.button("Analyze"):
-        if not txt.strip():
-            st.warning("Please enter a comment to analyze.")
+        if not txt.strip(): st.warning("Please enter a comment to analyze.")
         else:
             model, tokenizer = load_assets()
             out = model(**tokenizer([txt], return_tensors="pt")).logits
             probs = torch.softmax(out, dim=1).detach().numpy()[0]
             p = torch.argmax(out, dim=1).item()
-
             col_res, col_chart = st.columns(2)
             with col_res:
-                labels = ["Negative 😡", "Neutral 😐", "Positive 😊"]
-                st.markdown(f"### Result: {labels[p]}")
+                st.markdown(f"### Result: {['Negative 😡', 'Neutral 😐', 'Positive 😊'][p]}")
                 st.metric("Confidence Score", f"{probs[p] * 100:.2f}%")
             with col_chart:
-                fig_bar = px.bar(x=["Negative", "Neutral", "Positive"], y=probs,
-                                 color=["Negative", "Neutral", "Positive"],
-                                 color_discrete_map={"Negative": "#D32F2F", "Neutral": "#FFC107",
-                                                     "Positive": "#2E7D32"})
+                fig_bar = px.bar(x=["Negative", "Neutral", "Positive"], y=probs, color=["Negative", "Neutral", "Positive"],
+                                 color_discrete_map={"Negative": "#D32F2F", "Neutral": "#FFC107", "Positive": "#2E7D32"})
                 st.plotly_chart(fig_bar, use_container_width=True)
