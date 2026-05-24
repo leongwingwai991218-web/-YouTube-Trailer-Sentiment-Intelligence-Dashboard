@@ -8,23 +8,23 @@ import plotly.graph_objects as go
 from transformers import AutoTokenizer
 from wordcloud import WordCloud
 import matplotlib.pyplot as plt
+import gdown
+import os # Ensure this is at the top with other imports
 
 # --- CONFIGURATION ---
 st.set_page_config(layout="wide", page_title="YouTube Trailer Sentiment Intelligence Dashboard")
 
-
+# The model loading function
 @st.cache_resource
 def load_assets():
     model_path = 'model.pkl'
-    # Check if model exists; if not, download it
+    # This will now work because 'os' is imported at the top
     if not os.path.exists(model_path):
-        # Use a public Google Drive URL
-        url = 'https://365umedumy-my.sharepoint.com/:u:/g/personal/24074889_siswa365_um_edu_my/IQDAIlLiZQbRQL-3_-k-w4qbAeQLmDBhZOObUybFHYYIg74?e=fRsbi2'
+        # Use a public Google Drive URL (replace with yours)
+        url = 'https://drive.google.com/uc?id=YOUR_FILE_ID_HERE'
         gdown.download(url, model_path, quiet=False)
     
-    # Load model
     model = joblib.load(model_path)
-    # Load tokenizer
     tokenizer = AutoTokenizer.from_pretrained('distilbert-base-uncased')
     model.eval()
     return model, tokenizer
