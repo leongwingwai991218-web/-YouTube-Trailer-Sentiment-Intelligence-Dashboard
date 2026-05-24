@@ -9,7 +9,7 @@ from transformers import AutoTokenizer
 from wordcloud import WordCloud
 import matplotlib.pyplot as plt
 import gdown
-import os # Ensure this is at the top with other imports
+import os 
 
 # --- CONFIGURATION ---
 st.set_page_config(layout="wide", page_title="YouTube Trailer Sentiment Intelligence Dashboard")
@@ -65,7 +65,6 @@ def analyze_trailer(url, max_comments):
     })
     return df, meta
 
-
 # --- MAIN UI ---
 st.title("🎬 YouTube Trailer Sentiment Intelligence Dashboard")
 tab1, tab2 = st.tabs(["📊 Marketing Analytics", "🔍 Individual Audit"])
@@ -85,12 +84,10 @@ with tab1:
                 c_img, c_text = st.columns([1, 4])
                 c_img.image(meta['thumb'], use_container_width=True)
                 c_text.subheader(meta['title'])
-                c_text.write(
-                    f"**Channel:** {meta['uploader']} | **Views:** {meta['views']:,} | **Likes:** {meta['likes']:,}")
+                c_text.write(f"**Channel:** {meta['uploader']} | **Views:** {meta['views']:,} | **Likes:** {meta['likes']:,}")
 
                 # Metrics
-                metrics = {"Sentiment Index": (df['sentiment'] == 'Positive').mean() * 100 - (
-                           df['sentiment'] == 'Negative').mean() * 100}
+                metrics = {"Sentiment Index": (df['sentiment'] == 'Positive').mean() * 100 - (df['sentiment'] == 'Negative').mean() * 100}
                 m1, m2, m3, m4 = st.columns(4)
                 m1.metric("Sentiment Index", f"{metrics['Sentiment Index']:.1f}")
                 m2.metric("Advocacy Rate", f"{(df['sentiment'] == 'Positive').mean() * 100:.1f}%")
@@ -139,9 +136,10 @@ with tab1:
                         """, unsafe_allow_html=True)
 
                     st.subheader("Buzzword Cloud")
-                    # --- WORDCLOUD FIX: Filter non-Latin characters ---
+                    # Clean text to remove non-ASCII characters to fix rectangle issue
                     clean_text = "".join([char for char in " ".join(df['text']) if ord(char) < 128])
-                    wc = WordCloud(width=800, height=150, background_color='white').generate(clean_text)
+                    # Increased height to 550 for alignment
+                    wc = WordCloud(width=800, height=550, background_color='white').generate(clean_text)
                     st.image(wc.to_array(), use_container_width=True)
 
                 with right_col:
@@ -149,36 +147,10 @@ with tab1:
                     fig_hist = px.histogram(df, x="sentiment", color="sentiment",
                                             color_discrete_map={"Negative": "#D32F2F", "Neutral": "#FFC107",
                                                                 "Positive": "#2E7D32"})
+                    # Height set to 650 to align with the taller WordCloud
                     fig_hist.update_layout(height=650)
                     st.plotly_chart(fig_hist, use_container_width=True)
 
                 st.divider()
                 st.subheader("📋 Detailed Comment Audit")
-                st.dataframe(df[['text', 'sentiment', 'conf']], use_container_width=True)
-
-with tab2:
-    st.subheader("Individual Comment Audit")
-    txt = st.text_area(
-        "Enter a comment to analyze:",
-        placeholder="e.g., 'This movie looks amazing, can't wait to watch it with my friends!'"
-    )
-    if st.button("Analyze"):
-        if not txt.strip():
-            st.warning("Please enter a comment to analyze.")
-        else:
-            model, tokenizer = load_assets()
-            out = model(**tokenizer([txt], return_tensors="pt")).logits
-            probs = torch.softmax(out, dim=1).detach().numpy()[0]
-            p = torch.argmax(out, dim=1).item()
-
-            col_res, col_chart = st.columns(2)
-            with col_res:
-                labels = ["Negative 😡", "Neutral 😐", "Positive 😊"]
-                st.markdown(f"### Result: {labels[p]}")
-                st.metric("Confidence Score", f"{probs[p] * 100:.2f}%")
-            with col_chart:
-                fig_bar = px.bar(x=["Negative", "Neutral", "Positive"], y=probs,
-                                 color=["Negative", "Neutral", "Positive"],
-                                 color_discrete_map={"Negative": "#D32F2F", "Neutral": "#FFC107",
-                                                     "Positive": "#2E7D32"})
-                st.plotly_chart(fig_bar, use_container_width=True)
+                st.dataframe(df[['text', 'sentiment
