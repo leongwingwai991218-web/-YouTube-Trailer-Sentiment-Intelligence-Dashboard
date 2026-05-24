@@ -27,7 +27,7 @@ def load_assets():
     model.eval()
     return model, tokenizer
 
-# --- ANALYSIS LOGIC ---
+# --- ANALYSIS LOGIC (Optimized) ---
 @st.cache_data(ttl=3600)
 def analyze_trailer(url, max_comments):
     ydl_opts = {'quiet': True, 'getcomments': True}
@@ -35,7 +35,7 @@ def analyze_trailer(url, max_comments):
         info = ydl.extract_info(url, download=False)
         comments_data = info.get('comments') or []
         
-        # Sort by timestamp (Newest first) and limit
+        # Sort by timestamp (Newest first) and STRICTLY limit to max_comments
         sorted_comments = sorted(comments_data, key=lambda x: x.get('timestamp', 0), reverse=True)
         texts = [c.get('text', '') for c in sorted_comments][:max_comments]
 
@@ -52,6 +52,7 @@ def analyze_trailer(url, max_comments):
     model, tokenizer = load_assets()
     if model is None: return None, meta
         
+    # Process ONLY the exact number requested
     batch_size = 50
     preds, probs_max = [], []
     for i in range(0, len(texts), batch_size):
@@ -75,7 +76,7 @@ with tab1:
     max_c = col_b.slider("Number of comments to analyze", 50, 500, 100)
 
     if st.button("Run Sentiment Analysis", type="primary"):
-        with st.spinner("Analyzing latest comments..."):
+        with st.spinner(f"Analyzing the latest {max_c} comments..."):
             df, meta = analyze_trailer(url, max_c)
             if df is None:
                 st.error("No comments found or model failed to load.")
