@@ -18,28 +18,31 @@ def load_assets():
     model.eval()
     return model, tokenizer
 
-# --- ANALYSIS LOGIC (Maximum Speed) ---
 @st.cache_data(ttl=600)
 def analyze_trailer(url, max_comments):
-    # FAST-FETCH: Minimal options to reduce network handshake time
+    # UPGRADE: Add browser headers to prevent "No comments found" errors
     ydl_opts = {
         'quiet': True, 
         'getcomments': True, 
         'skip_download': True,
-        'ignoreerrors': True
+        'ignoreerrors': True,
+        'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36'
     }
     
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
         info = ydl.extract_info(url, download=False)
-        # Sort and slice immediately at the source
-        comments = sorted(info.get('comments', []), key=lambda x: x.get('timestamp', 0), reverse=True)
-        texts = [c.get('text', '') for c in comments][:max_comments]
+        # Check if comments exist in the fetched info
+        comments = info.get('comments', [])
+        
+        if not comments:
+            return None, None
+            
+        sorted_comments = sorted(comments, key=lambda x: x.get('timestamp', 0), reverse=True)
+        texts = [c.get('text', '') for c in sorted_comments][:max_comments]
 
-    if not texts: return None, None
-    
     model, tokenizer = load_assets()
     
-    # BATCH INFERENCE: Size 25 for optimal memory handling
+    # RAPID BATCH INFERENCE
     batch_size = 25 
     preds, confs = [], []
     for i in range(0, len(texts), batch_size):
@@ -62,10 +65,12 @@ with tab1:
     max_c = col_b.slider("Number of comments to analyze", 50, 500, 100)
 
     if st.button("Run Sentiment Analysis", type="primary"):
-        with st.spinner("Analyzing latest comments..."):
+        with st.spinner("Retrieving latest data from YouTube..."):
             df, meta = analyze_trailer(url, max_c)
-            if df is None: st.error("No comments found.")
+            if df is None: 
+                st.error("Error: Could not retrieve comments. The video might have comments disabled, or access is restricted.")
             else:
+                # [KEEPING YOUR EXACT LAYOUT BELOW]
                 c_img, c_text = st.columns([1, 4])
                 c_img.image(meta['thumb'], use_container_width=True)
                 c_text.subheader(meta['title'])
