@@ -27,10 +27,10 @@ def load_assets():
     model.eval()
     return model, tokenizer
 
-# --- ANALYSIS LOGIC (Optimized for Speed) ---
-@st.cache_data(ttl=3600)
+# --- ANALYSIS LOGIC (Speed Optimized) ---
+@st.cache_data(ttl=600)
 def analyze_trailer(url, max_comments):
-    # Optimized: minimal metadata fetch to speed up scraping
+    # Optimized ydl_opts: focus only on comments, ignore video stream data
     ydl_opts = {
         'quiet': True, 
         'getcomments': True,
@@ -59,12 +59,11 @@ def analyze_trailer(url, max_comments):
     model, tokenizer = load_assets()
     if model is None: return None, meta
         
-    # Batch processing for faster inference
-    batch_size = 50
+    # Batch processing (Size 25 for optimal speed on free-tier RAM)
+    batch_size = 25
     preds, probs_max = [], []
     for i in range(0, len(texts), batch_size):
         batch = texts[i:i + batch_size]
-        # Truncation to 128 tokens significantly speeds up BERT analysis
         inputs = tokenizer(batch, return_tensors="pt", padding=True, truncation=True, max_length=128)
         with torch.inference_mode():
             outputs = model(**inputs).logits
@@ -81,7 +80,7 @@ tab1, tab2 = st.tabs(["📊 Real Time Trailer Analysis", "🔍 Individual Commen
 with tab1:
     col_a, col_b = st.columns([2, 1])
     url = col_a.text_input("Enter Trailer URL:")
-    max_c = col_b.slider("Number of comments to analyze", 50, 500, 100)
+    max_c = col_b.slider("Number of comments to analyze", 20, 200, 50) # Capped at 200 for 10s runtime
 
     if st.button("Run Sentiment Analysis", type="primary"):
         with st.spinner("Analyzing latest comments..."):
