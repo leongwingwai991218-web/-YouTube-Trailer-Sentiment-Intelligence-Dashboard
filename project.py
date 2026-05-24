@@ -7,6 +7,7 @@ import gdown, os
 # --- CONFIGURATION ---
 st.set_page_config(layout="wide", page_title="YouTube Trailer Sentiment Intelligence Dashboard")
 
+# --- ASSET LOADING ---
 @st.cache_resource
 def load_assets():
     model_path = 'model.pkl'
@@ -17,13 +18,20 @@ def load_assets():
     model.eval()
     return model, tokenizer
 
+# --- ANALYSIS LOGIC (Maximum Speed) ---
 @st.cache_data(ttl=600)
 def analyze_trailer(url, max_comments):
-    # FAST FETCH: Skip video downloads, ignore errors, minimal overhead
-    ydl_opts = {'quiet': True, 'getcomments': True, 'skip_download': True, 'ignoreerrors': True}
+    # FAST-FETCH: Minimal options to reduce network handshake time
+    ydl_opts = {
+        'quiet': True, 
+        'getcomments': True, 
+        'skip_download': True,
+        'ignoreerrors': True
+    }
     
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
         info = ydl.extract_info(url, download=False)
+        # Sort and slice immediately at the source
         comments = sorted(info.get('comments', []), key=lambda x: x.get('timestamp', 0), reverse=True)
         texts = [c.get('text', '') for c in comments][:max_comments]
 
@@ -31,7 +39,7 @@ def analyze_trailer(url, max_comments):
     
     model, tokenizer = load_assets()
     
-    # BATCH INFERENCE: 25 is the optimal batch size for free-tier memory
+    # BATCH INFERENCE: Size 25 for optimal memory handling
     batch_size = 25 
     preds, confs = [], []
     for i in range(0, len(texts), batch_size):
@@ -44,23 +52,58 @@ def analyze_trailer(url, max_comments):
     df = pd.DataFrame({'text': texts, 'sentiment': [["Negative", "Neutral", "Positive"][p] for p in preds], 'conf': confs})
     return df, {'title': info.get('title'), 'thumb': info.get('thumbnail'), 'uploader': info.get('uploader'), 'views': info.get('view_count', 0)}
 
-# --- MAIN UI ---
+# --- MAIN UI (Layout Preserved) ---
 st.title("🎬 YouTube Trailer Sentiment Intelligence Dashboard")
 tab1, tab2 = st.tabs(["📊 Real Time Trailer Analysis", "🔍 Individual Comment Check"])
 
 with tab1:
     col_a, col_b = st.columns([2, 1])
     url = col_a.text_input("Enter Trailer URL:")
-    max_c = col_b.slider("Number of comments to analyze", 20, 200, 50)
+    max_c = col_b.slider("Number of comments to analyze", 50, 500, 100)
 
     if st.button("Run Sentiment Analysis", type="primary"):
-        with st.spinner("Processing..."):
+        with st.spinner("Analyzing latest comments..."):
             df, meta = analyze_trailer(url, max_c)
             if df is None: st.error("No comments found.")
             else:
-                # Metrics and Layout code remains your original design...
-                st.success(f"Analyzed {len(df)} latest comments successfully!")
-                # [Place your gauge, wordcloud, distribution, and dataframe code here]
+                c_img, c_text = st.columns([1, 4])
+                c_img.image(meta['thumb'], use_container_width=True)
+                c_text.subheader(meta['title'])
+                c_text.write(f"**Channel:** {meta['uploader']} | **Views:** {meta['views']:,}")
+
+                m1, m2, m3, m4 = st.columns(4)
+                m1.metric("Sentiment Index", f"{(df['sentiment'] == 'Positive').mean() * 100 - (df['sentiment'] == 'Negative').mean() * 100:.1f}")
+                m2.metric("Advocacy Rate", f"{(df['sentiment'] == 'Positive').mean() * 100:.1f}%")
+                m3.metric("Friction Index", f"{(df['sentiment'] == 'Negative').mean() * 100:.1f}%")
+                m4.metric("Neutral Fatigue", f"{(df['sentiment'] == 'Neutral').mean() * 100:.1f}%")
+
+                st.subheader("Recency Sentiment Momentum")
+                g1, g2 = st.columns([2, 1])
+                momentum_score = max(0, min(100, 50 + (((df['sentiment'] == 'Positive').mean() * 100 - (df['sentiment'] == 'Negative').mean() * 100) * 0.3)))
+                num_color = "#D32F2F" if momentum_score < 33 else "#FFC107" if momentum_score < 66 else "#2E7D32"
+                with g1:
+                    fig_gauge = go.Figure(go.Indicator(mode="gauge+number", value=round(momentum_score, 1), 
+                                                       number={'font': {'color': num_color, 'size': 50}}, 
+                                                       gauge={'axis': {'range': [0, 100]}, 'bar': {'color': num_color},
+                                                       'steps': [{'range': [0, 33], 'color': "#F8D7DA"}, {'range': [33, 66], 'color': "#FFF3CD"}, {'range': [66, 100], 'color': "#D4EDDA"}]}))
+                    fig_gauge.update_layout(height=250, margin=dict(l=20, r=20, t=20, b=20))
+                    st.plotly_chart(fig_gauge, use_container_width=True)
+                with g2:
+                    st.markdown("""<div style="margin-top: 50px;"><b>Momentum Guide:</b><br>🔴 Critical friction (0-33)<br>🟡 Engagement tepid (34-66)<br>🟢 High advocacy (67-100)</div>""", unsafe_allow_html=True)
+
+                row2_col1, row2_col2 = st.columns(2)
+                with row2_col1:
+                    st.subheader("Buzzword Cloud")
+                    clean_text = "".join([char for char in " ".join(df['text']) if ord(char) < 128])
+                    wc = WordCloud(width=800, height=400, background_color='white').generate(clean_text)
+                    st.image(wc.to_array(), use_container_width=True)
+                with row2_col2:
+                    st.subheader("Sentiment Distribution")
+                    fig_hist = px.histogram(df, x="sentiment", color="sentiment", height=400, color_discrete_map={"Negative": "#D32F2F", "Neutral": "#FFC107", "Positive": "#2E7D32"})
+                    st.plotly_chart(fig_hist, use_container_width=True)
+
+                st.subheader("📋 Detailed Comment Analysis (Newest First)")
+                st.dataframe(df[['text', 'sentiment', 'conf']], use_container_width=True)
 
 with tab2:
 
