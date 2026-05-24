@@ -64,14 +64,14 @@ def analyze_trailer(url, max_comments):
 
 # --- MAIN UI ---
 st.title("🎬 YouTube Trailer Sentiment Intelligence Dashboard")
-tab1, tab2 = st.tabs(["📊 Marketing Analytics", "🔍 Individual Audit"])
+tab1, tab2 = st.tabs(["📊 Real Time Trailer Analysis", "🔍 Individual Comment Check"])
 
 with tab1:
     col_a, col_b = st.columns([2, 1])
     url = col_a.text_input("Enter Trailer URL:")
-    max_c = col_b.slider("Number of comments", 50, 500, 100)
+    max_c = col_b.slider("Number of comments to analyze", 50, 500, 100)
 
-    if st.button("Run Comprehensive Audit", type="primary"):
+    if st.button("Run Sentiment Analysis", type="primary"):
         with st.spinner("Analyzing..."):
             df, meta = analyze_trailer(url, max_c)
             if df is None:
@@ -121,11 +121,11 @@ with tab1:
                                             color_discrete_map={"Negative": "#D32F2F", "Neutral": "#FFC107", "Positive": "#2E7D32"})
                     st.plotly_chart(fig_hist, use_container_width=True)
 
-                st.subheader("📋 Detailed Comment Audit")
+                st.subheader("📋 Detailed Comment Analysis")
                 st.dataframe(df[['text', 'sentiment', 'conf']], use_container_width=True)
 
 with tab2:
-    st.subheader("Individual Comment Audit")
+    st.subheader("Individual Comment Check")
     
     # 1. Add a visual guide/scale
     st.markdown("""
