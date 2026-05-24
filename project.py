@@ -122,9 +122,11 @@ with tab1:
 
                 st.subheader("📋 Detailed Comment Analysis")
                 st.dataframe(df[['text', 'sentiment', 'conf']], use_container_width=True)
-    with tab2:
+with tab2:
 
     st.subheader("Individual Comment Check")
+
+    
 
     # 1. Add a visual guide/scale
 
