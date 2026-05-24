@@ -124,4 +124,30 @@ with tab1:
                     st.image(wc.to_array(), use_container_width=True)
                 with row2_col2:
                     st.subheader("Sentiment Distribution")
-                    fig_hist = px.histogram(df, x="sentiment", color="sentiment
+                    fig_hist = px.histogram(df, x="sentiment", color="sentiment", height=400,
+                                            color_discrete_map={"Negative": "#D32F2F", "Neutral": "#FFC107", "Positive": "#2E7D32"})
+                    st.plotly_chart(fig_hist, use_container_width=True)
+
+                st.subheader("📋 Detailed Comment Analysis (Newest First)")
+                st.dataframe(df[['text', 'sentiment', 'conf']], use_container_width=True)
+
+with tab2:
+    st.subheader("Individual Comment Check")
+    st.markdown("**Sentiment Scale Guide:**\n* **Negative 😡**: Critical/Dissatisfied\n* **Neutral 😐**: Factual/No strong emotion\n* **Positive 😊**: Praise/Endorsement")
+    txt = st.text_area("Enter a comment to analyze:")
+    if st.button("Analyze"):
+        if not txt.strip(): st.warning("Please enter a comment to analyze.")
+        else:
+            model, tokenizer = load_assets()
+            out = model(**tokenizer([txt], return_tensors="pt")).logits
+            probs = torch.softmax(out, dim=1).detach().numpy()[0]
+            p = torch.argmax(out, dim=1).item()
+            col_res, col_chart = st.columns(2)
+            with col_res:
+                st.markdown(f"### Result: {['Negative 😡', 'Neutral 😐', 'Positive 😊'][p]}")
+                st.metric("Confidence Score", f"{probs[p] * 100:.2f}%")
+            with col_chart:
+                fig_bar = px.bar(x=["Negative", "Neutral", "Positive"], y=probs, color=["Negative", "Neutral", "Positive"],
+                                 color_discrete_map={"Negative": "#D32F2F", "Neutral": "#FFC107", "Positive": "#2E7D32"})
+                fig_bar.update_layout(showlegend=False, height=300)
+                st.plotly_chart(fig_bar, use_container_width=True)
