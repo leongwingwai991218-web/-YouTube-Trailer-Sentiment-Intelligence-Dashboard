@@ -27,15 +27,22 @@ def load_assets():
     model.eval()
     return model, tokenizer
 
-# --- ANALYSIS LOGIC (Optimized) ---
+# --- ANALYSIS LOGIC (Optimized for Speed) ---
 @st.cache_data(ttl=3600)
 def analyze_trailer(url, max_comments):
-    ydl_opts = {'quiet': True, 'getcomments': True}
+    # Optimized: minimal metadata fetch to speed up scraping
+    ydl_opts = {
+        'quiet': True, 
+        'getcomments': True,
+        'skip_download': True,
+        'ignoreerrors': True
+    }
+    
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
         info = ydl.extract_info(url, download=False)
         comments_data = info.get('comments') or []
         
-        # Sort by timestamp (Newest first) and STRICTLY limit to max_comments
+        # Sort by timestamp (Newest first) and limit to max_comments
         sorted_comments = sorted(comments_data, key=lambda x: x.get('timestamp', 0), reverse=True)
         texts = [c.get('text', '') for c in sorted_comments][:max_comments]
 
@@ -52,11 +59,12 @@ def analyze_trailer(url, max_comments):
     model, tokenizer = load_assets()
     if model is None: return None, meta
         
-    # Process ONLY the exact number requested
+    # Batch processing for faster inference
     batch_size = 50
     preds, probs_max = [], []
     for i in range(0, len(texts), batch_size):
         batch = texts[i:i + batch_size]
+        # Truncation to 128 tokens significantly speeds up BERT analysis
         inputs = tokenizer(batch, return_tensors="pt", padding=True, truncation=True, max_length=128)
         with torch.inference_mode():
             outputs = model(**inputs).logits
@@ -76,7 +84,7 @@ with tab1:
     max_c = col_b.slider("Number of comments to analyze", 50, 500, 100)
 
     if st.button("Run Sentiment Analysis", type="primary"):
-        with st.spinner(f"Analyzing the latest {max_c} comments..."):
+        with st.spinner("Analyzing latest comments..."):
             df, meta = analyze_trailer(url, max_c)
             if df is None:
                 st.error("No comments found or model failed to load.")
@@ -116,30 +124,4 @@ with tab1:
                     st.image(wc.to_array(), use_container_width=True)
                 with row2_col2:
                     st.subheader("Sentiment Distribution")
-                    fig_hist = px.histogram(df, x="sentiment", color="sentiment", height=400,
-                                            color_discrete_map={"Negative": "#D32F2F", "Neutral": "#FFC107", "Positive": "#2E7D32"})
-                    st.plotly_chart(fig_hist, use_container_width=True)
-
-                st.subheader("📋 Detailed Comment Analysis (Newest First)")
-                st.dataframe(df[['text', 'sentiment', 'conf']], use_container_width=True)
-
-with tab2:
-    st.subheader("Individual Comment Check")
-    st.markdown("**Sentiment Scale Guide:**\n* **Negative 😡**: Critical/Dissatisfied\n* **Neutral 😐**: Factual/No strong emotion\n* **Positive 😊**: Praise/Endorsement")
-    txt = st.text_area("Enter a comment to analyze:")
-    if st.button("Analyze"):
-        if not txt.strip(): st.warning("Please enter a comment to analyze.")
-        else:
-            model, tokenizer = load_assets()
-            out = model(**tokenizer([txt], return_tensors="pt")).logits
-            probs = torch.softmax(out, dim=1).detach().numpy()[0]
-            p = torch.argmax(out, dim=1).item()
-            col_res, col_chart = st.columns(2)
-            with col_res:
-                st.markdown(f"### Result: {['Negative 😡', 'Neutral 😐', 'Positive 😊'][p]}")
-                st.metric("Confidence Score", f"{probs[p] * 100:.2f}%")
-            with col_chart:
-                fig_bar = px.bar(x=["Negative", "Neutral", "Positive"], y=probs, color=["Negative", "Neutral", "Positive"],
-                                 color_discrete_map={"Negative": "#D32F2F", "Neutral": "#FFC107", "Positive": "#2E7D32"})
-                fig_bar.update_layout(showlegend=False, height=300)
-                st.plotly_chart(fig_bar, use_container_width=True)
+                    fig_hist = px.histogram(df, x="sentiment", color="sentiment
