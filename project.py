@@ -120,29 +120,21 @@ with tab1:
                                             color_discrete_map={"Negative": "#D32F2F", "Neutral": "#FFC107", "Positive": "#2E7D32"})
                     st.plotly_chart(fig_hist, use_container_width=True)
 
-                st.subheader("📋 Detailed Comment Analysis")
+                st.subheader("📋 Detailed Comment Analysis (Sort by latest)")
                 st.dataframe(df[['text', 'sentiment', 'conf']], use_container_width=True)
 with tab2:
 
     st.subheader("Individual Comment Check")
-
     
 
     # 1. Add a visual guide/scale
 
     st.markdown("""
-
     **Sentiment Scale Guide:**
-
     * **Negative 😡**: High levels of criticism, sarcasm, or dissatisfaction.
-
     * **Neutral 😐**: Factual statements, questions, or non-emotional engagement.
-
     * **Positive 😊**: Praise, excitement, or strong endorsement.
-
     """)
-
-    
 
     txt = st.text_area(
 
