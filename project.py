@@ -120,7 +120,7 @@ with tab1:
                                             color_discrete_map={"Negative": "#D32F2F", "Neutral": "#FFC107", "Positive": "#2E7D32"})
                     st.plotly_chart(fig_hist, use_container_width=True)
 
-                st.subheader("📋 Detailed Comment Analysis (Sort by latest)")
+                st.subheader("📋 Detailed Comment Analysis (Newest First)")
                 st.dataframe(df[['text', 'sentiment', 'conf']], use_container_width=True)
 with tab2:
 
