@@ -1,8 +1,15 @@
 import streamlit as st
-import joblib, torch, pandas as pd, yt_dlp, plotly.express as px, plotly.graph_objects as go
+import joblib
+import torch
+import pandas as pd
+import yt_dlp
+import plotly.express as px
+import plotly.graph_objects as go
 from transformers import AutoTokenizer
 from wordcloud import WordCloud
-import gdown, os
+import matplotlib.pyplot as plt
+import gdown
+import os
 
 # --- CONFIGURATION ---
 st.set_page_config(layout="wide", page_title="YouTube Trailer Sentiment Intelligence Dashboard")
@@ -12,50 +19,62 @@ st.set_page_config(layout="wide", page_title="YouTube Trailer Sentiment Intellig
 def load_assets():
     model_path = 'model.pkl'
     if not os.path.exists(model_path):
-        gdown.download('https://drive.google.com/uc?export=download&id=13Lb2WECIxXT5NpayZVRx2wXerp8O65fF', model_path, quiet=True)
+        url = 'https://drive.google.com/uc?export=download&id=13Lb2WECIxXT5NpayZVRx2wXerp8O65fF'
+        gdown.download(url, model_path, quiet=False)
+    
     model = joblib.load(model_path)
     tokenizer = AutoTokenizer.from_pretrained('distilbert-base-uncased')
     model.eval()
     return model, tokenizer
 
-@st.cache_data(ttl=600)
+# --- ANALYSIS LOGIC (Optimized for Speed) ---
+@st.cache_data(ttl=3600)
 def analyze_trailer(url, max_comments):
-    # UPGRADE: Add browser headers to prevent "No comments found" errors
+    # Optimized: minimal metadata fetch to speed up scraping
     ydl_opts = {
         'quiet': True, 
-        'getcomments': True, 
+        'getcomments': True,
         'skip_download': True,
-        'ignoreerrors': True,
-        'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36'
+        'ignoreerrors': True
     }
     
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
         info = ydl.extract_info(url, download=False)
-        # Check if comments exist in the fetched info
-        comments = info.get('comments', [])
+        comments_data = info.get('comments') or []
         
-        if not comments:
-            return None, None
-            
-        sorted_comments = sorted(comments, key=lambda x: x.get('timestamp', 0), reverse=True)
+        # Sort by timestamp (Newest first) and limit to max_comments
+        sorted_comments = sorted(comments_data, key=lambda x: x.get('timestamp', 0), reverse=True)
         texts = [c.get('text', '') for c in sorted_comments][:max_comments]
 
-    model, tokenizer = load_assets()
-    
-    # RAPID BATCH INFERENCE
-    batch_size = 25 
-    preds, confs = [], []
-    for i in range(0, len(texts), batch_size):
-        inputs = tokenizer(texts[i:i+batch_size], return_tensors="pt", padding=True, truncation=True, max_length=128)
-        with torch.inference_mode():
-            out = model(**inputs).logits
-            preds.extend(torch.argmax(out, dim=1).numpy())
-            confs.extend(torch.softmax(out, dim=1).detach().numpy().max(axis=1))
-    
-    df = pd.DataFrame({'text': texts, 'sentiment': [["Negative", "Neutral", "Positive"][p] for p in preds], 'conf': confs})
-    return df, {'title': info.get('title'), 'thumb': info.get('thumbnail'), 'uploader': info.get('uploader'), 'views': info.get('view_count', 0)}
+        if not texts: return None, None
 
-# --- MAIN UI (Layout Preserved) ---
+        meta = {
+            'title': info.get('title', 'Unknown'),
+            'thumb': info.get('thumbnail'),
+            'uploader': info.get('uploader'),
+            'views': info.get('view_count', 0),
+            'likes': info.get('like_count', 0)
+        }
+
+    model, tokenizer = load_assets()
+    if model is None: return None, meta
+        
+    # Batch processing for faster inference
+    batch_size = 50
+    preds, probs_max = [], []
+    for i in range(0, len(texts), batch_size):
+        batch = texts[i:i + batch_size]
+        # Truncation to 128 tokens significantly speeds up BERT analysis
+        inputs = tokenizer(batch, return_tensors="pt", padding=True, truncation=True, max_length=128)
+        with torch.inference_mode():
+            outputs = model(**inputs).logits
+            preds.extend(torch.argmax(outputs, dim=1).numpy())
+            probs_max.extend(torch.softmax(outputs, dim=1).detach().numpy().max(axis=1))
+        
+    df = pd.DataFrame({'text': texts, 'sentiment': [["Negative", "Neutral", "Positive"][p] for p in preds], 'conf': probs_max})
+    return df, meta
+
+# --- MAIN UI ---
 st.title("🎬 YouTube Trailer Sentiment Intelligence Dashboard")
 tab1, tab2 = st.tabs(["📊 Real Time Trailer Analysis", "🔍 Individual Comment Check"])
 
@@ -65,12 +84,11 @@ with tab1:
     max_c = col_b.slider("Number of comments to analyze", 50, 500, 100)
 
     if st.button("Run Sentiment Analysis", type="primary"):
-        with st.spinner("Retrieving latest data from YouTube..."):
+        with st.spinner("Analyzing latest comments..."):
             df, meta = analyze_trailer(url, max_c)
-            if df is None: 
-                st.error("Error: Could not retrieve comments. The video might have comments disabled, or access is restricted.")
+            if df is None:
+                st.error("No comments found or model failed to load.")
             else:
-                # [KEEPING YOUR EXACT LAYOUT BELOW]
                 c_img, c_text = st.columns([1, 4])
                 c_img.image(meta['thumb'], use_container_width=True)
                 c_text.subheader(meta['title'])
@@ -87,10 +105,12 @@ with tab1:
                 momentum_score = max(0, min(100, 50 + (((df['sentiment'] == 'Positive').mean() * 100 - (df['sentiment'] == 'Negative').mean() * 100) * 0.3)))
                 num_color = "#D32F2F" if momentum_score < 33 else "#FFC107" if momentum_score < 66 else "#2E7D32"
                 with g1:
-                    fig_gauge = go.Figure(go.Indicator(mode="gauge+number", value=round(momentum_score, 1), 
-                                                       number={'font': {'color': num_color, 'size': 50}}, 
-                                                       gauge={'axis': {'range': [0, 100]}, 'bar': {'color': num_color},
-                                                       'steps': [{'range': [0, 33], 'color': "#F8D7DA"}, {'range': [33, 66], 'color': "#FFF3CD"}, {'range': [66, 100], 'color': "#D4EDDA"}]}))
+                    fig_gauge = go.Figure(go.Indicator(
+                        mode="gauge+number", value=round(momentum_score, 1),
+                        number={'font': {'color': num_color, 'size': 50}},
+                        gauge={'axis': {'range': [0, 100]}, 'bar': {'color': num_color},
+                               'steps': [{'range': [0, 33], 'color': "#F8D7DA"}, {'range': [33, 66], 'color': "#FFF3CD"}, {'range': [66, 100], 'color': "#D4EDDA"}]}
+                    ))
                     fig_gauge.update_layout(height=250, margin=dict(l=20, r=20, t=20, b=20))
                     st.plotly_chart(fig_gauge, use_container_width=True)
                 with g2:
@@ -104,7 +124,8 @@ with tab1:
                     st.image(wc.to_array(), use_container_width=True)
                 with row2_col2:
                     st.subheader("Sentiment Distribution")
-                    fig_hist = px.histogram(df, x="sentiment", color="sentiment", height=400, color_discrete_map={"Negative": "#D32F2F", "Neutral": "#FFC107", "Positive": "#2E7D32"})
+                    fig_hist = px.histogram(df, x="sentiment", color="sentiment", height=400,
+                                            color_discrete_map={"Negative": "#D32F2F", "Neutral": "#FFC107", "Positive": "#2E7D32"})
                     st.plotly_chart(fig_hist, use_container_width=True)
 
                 st.subheader("📋 Detailed Comment Analysis (Newest First)")
