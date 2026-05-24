@@ -138,4 +138,7 @@ with tab2:
                 st.markdown(f"### Result: {['Negative 😡', 'Neutral 😐', 'Positive 😊'][p]}")
                 st.metric("Confidence Score", f"{probs[p] * 100:.2f}%")
             with col_chart:
-                fig_bar = px.bar(x=["Negative", "Neutral", "Positive"], y=probs,
+                fig_bar = px.bar(x=["Negative", "Neutral", "Positive"], y=probs, color=["Negative", "Neutral", "Positive"],
+                                 color_discrete_map={"Negative": "#D32F2F", "Neutral": "#FFC107", "Positive": "#2E7D32"})
+                fig_bar.update_layout(showlegend=False, height=300)
+                st.plotly_chart(fig_bar, use_container_width=True)
