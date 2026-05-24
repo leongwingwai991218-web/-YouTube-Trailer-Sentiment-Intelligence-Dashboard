@@ -27,22 +27,15 @@ def load_assets():
     model.eval()
     return model, tokenizer
 
-# --- ANALYSIS LOGIC (Optimized for Speed) ---
+# --- ANALYSIS LOGIC (Optimized) ---
 @st.cache_data(ttl=3600)
 def analyze_trailer(url, max_comments):
-    # Optimized: minimal metadata fetch to speed up scraping
-    ydl_opts = {
-        'quiet': True, 
-        'getcomments': True,
-        'skip_download': True,
-        'ignoreerrors': True
-    }
-    
+    ydl_opts = {'quiet': True, 'getcomments': True}
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
         info = ydl.extract_info(url, download=False)
         comments_data = info.get('comments') or []
         
-        # Sort by timestamp (Newest first) and limit to max_comments
+        # Sort by timestamp (Newest first) and STRICTLY limit to max_comments
         sorted_comments = sorted(comments_data, key=lambda x: x.get('timestamp', 0), reverse=True)
         texts = [c.get('text', '') for c in sorted_comments][:max_comments]
 
@@ -59,12 +52,11 @@ def analyze_trailer(url, max_comments):
     model, tokenizer = load_assets()
     if model is None: return None, meta
         
-    # Batch processing for faster inference
+    # Process ONLY the exact number requested
     batch_size = 50
     preds, probs_max = [], []
     for i in range(0, len(texts), batch_size):
         batch = texts[i:i + batch_size]
-        # Truncation to 128 tokens significantly speeds up BERT analysis
         inputs = tokenizer(batch, return_tensors="pt", padding=True, truncation=True, max_length=128)
         with torch.inference_mode():
             outputs = model(**inputs).logits
@@ -84,7 +76,7 @@ with tab1:
     max_c = col_b.slider("Number of comments to analyze", 50, 500, 100)
 
     if st.button("Run Sentiment Analysis", type="primary"):
-        with st.spinner("Analyzing latest comments..."):
+        with st.spinner(f"Analyzing the latest {max_c} comments..."):
             df, meta = analyze_trailer(url, max_c)
             if df is None:
                 st.error("No comments found or model failed to load.")
