@@ -21,7 +21,7 @@ def load_assets():
     # This will now work because 'os' is imported at the top
     if not os.path.exists(model_path):
         # Use a public Google Drive URL (replace with yours)
-        url = 'https://365umedumy-my.sharepoint.com/:u:/g/personal/24074889_siswa365_um_edu_my/IQDAIlLiZQbRQL-3_-k-w4qbAeQLmDBhZOObUybFHYYIg74?e=0hweanE'
+        url = 'https://drive.google.com/file/d/13Lb2WECIxXT5NpayZVRx2wXerp8O65fF/view?usp=sharing'
         gdown.download(url, model_path, quiet=False)
     
     model = joblib.load(model_path)
