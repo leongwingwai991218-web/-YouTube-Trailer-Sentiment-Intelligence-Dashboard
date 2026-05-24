@@ -12,6 +12,12 @@ import matplotlib.pyplot as plt
 # --- CONFIGURATION ---
 st.set_page_config(layout="wide", page_title="YouTube Trailer Sentiment Intelligence Dashboard")
 
+import gdown
+import os
+
+if not os.path.exists("model.pkl"):
+    gdown.download("https://365umedumy-my.sharepoint.com/:u:/g/personal/24074889_siswa365_um_edu_my/IQDAIlLiZQbRQL-3_-k-w4qbAeQLmDBhZOObUybFHYYIg74?e=FP8mXw", "model.pkl", quiet=False)
+# Then load your model as usual
 
 @st.cache_resource
 def load_assets():
