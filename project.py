@@ -126,17 +126,45 @@ with tab1:
 
 with tab2:
     st.subheader("Individual Comment Audit")
-    txt = st.text_area("Enter a comment to analyze:")
+    
+    # 1. Add a visual guide/scale
+    st.markdown("""
+    **Sentiment Scale Guide:**
+    * **Negative 😡**: High levels of criticism, sarcasm, or dissatisfaction.
+    * **Neutral 😐**: Factual statements, questions, or non-emotional engagement.
+    * **Positive 😊**: Praise, excitement, or strong endorsement.
+    """)
+    
+    txt = st.text_area(
+        "Enter a comment to analyze:",
+        placeholder="e.g., 'This movie looks amazing, can't wait to watch it!'"
+    )
+    
     if st.button("Analyze"):
-        model, tokenizer = load_assets()
-        out = model(**tokenizer([txt], return_tensors="pt")).logits
-        probs = torch.softmax(out, dim=1).detach().numpy()[0]
-        p = torch.argmax(out, dim=1).item()
-        col_res, col_chart = st.columns(2)
-        with col_res:
-            st.markdown(f"### Result: {['Negative 😡', 'Neutral 😐', 'Positive 😊'][p]}")
-            st.metric("Confidence Score", f"{probs[p] * 100:.2f}%")
-        with col_chart:
-            fig_bar = px.bar(x=["Negative", "Neutral", "Positive"], y=probs, color=["Negative", "Neutral", "Positive"],
-                             color_discrete_map={"Negative": "#D32F2F", "Neutral": "#FFC107", "Positive": "#2E7D32"})
-            st.plotly_chart(fig_bar, use_container_width=True)
+        if not txt.strip():
+            st.warning("Please enter a comment to analyze.")
+        else:
+            model, tokenizer = load_assets()
+            out = model(**tokenizer([txt], return_tensors="pt")).logits
+            probs = torch.softmax(out, dim=1).detach().numpy()[0]
+            p = torch.argmax(out, dim=1).item()
+
+            col_res, col_chart = st.columns(2)
+            with col_res:
+                labels = ["Negative 😡", "Neutral 😐", "Positive 😊"]
+                st.markdown(f"### Result: {labels[p]}")
+                st.metric("Confidence Score", f"{probs[p] * 100:.2f}%")
+                
+                # Dynamic interpretation message
+                if probs[p] > 0.8:
+                    st.info("The model is highly confident in this classification.")
+                elif probs[p] < 0.5:
+                    st.warning("The model's confidence is low; this comment may be ambiguous.")
+                    
+            with col_chart:
+                fig_bar = px.bar(x=["Negative", "Neutral", "Positive"], y=probs,
+                                 color=["Negative", "Neutral", "Positive"],
+                                 color_discrete_map={"Negative": "#D32F2F", "Neutral": "#FFC107",
+                                                     "Positive": "#2E7D32"})
+                fig_bar.update_layout(showlegend=False, height=300)
+                st.plotly_chart(fig_bar, use_container_width=True)
