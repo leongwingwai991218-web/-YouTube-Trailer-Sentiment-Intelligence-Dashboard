@@ -27,15 +27,18 @@ def load_assets():
     model.eval()
     return model, tokenizer
 
-# --- ANALYSIS LOGIC (Optimized) ---
+# --- ANALYSIS LOGIC (Bulletproof & Optimized) ---
 @st.cache_data(ttl=3600)
 def analyze_trailer(url, max_comments):
     ydl_opts = {'quiet': True, 'getcomments': True}
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
         info = ydl.extract_info(url, download=False)
-        comments_data = info.get('comments') or []
+        # SAFELY handle comments
+        comments_data = info.get('comments')
+        if not isinstance(comments_data, list):
+            comments_data = []
         
-        # Sort by timestamp (Newest first) and STRICTLY limit to max_comments
+        # Sort by timestamp (Newest first) and limit
         sorted_comments = sorted(comments_data, key=lambda x: x.get('timestamp', 0), reverse=True)
         texts = [c.get('text', '') for c in sorted_comments][:max_comments]
 
@@ -52,7 +55,6 @@ def analyze_trailer(url, max_comments):
     model, tokenizer = load_assets()
     if model is None: return None, meta
         
-    # Process ONLY the exact number requested
     batch_size = 50
     preds, probs_max = [], []
     for i in range(0, len(texts), batch_size):
@@ -122,141 +124,32 @@ with tab1:
 
                 st.subheader("📋 Detailed Comment Analysis (Newest First)")
                 st.dataframe(df[['text', 'sentiment', 'conf']], use_container_width=True)
+
 with tab2:
-
-
-
     st.subheader("Individual Comment Check")
-    # 1. Add a visual guide/scale
-
     st.markdown("""
     **Sentiment Scale Guide:**
     * **Negative 😡**: High levels of criticism, sarcasm, or dissatisfaction.
     * **Neutral 😐**: Factual statements, questions, or non-emotional engagement.
     * **Positive 😊**: Praise, excitement, or strong endorsement.
     """)
-
-
-    txt = st.text_area(
-
-        "Enter a comment to analyze:",
-
-        placeholder="e.g., 'This movie looks amazing, can't wait to watch it!'"
-
-    )
-
-
-
-    
-
-
-
+    txt = st.text_area("Enter a comment to analyze:", placeholder="e.g., 'This movie looks amazing, can't wait to watch it!'")
     if st.button("Analyze"):
-
-
-
-        if not txt.strip():
-
-
-
-            st.warning("Please enter a comment to analyze.")
-
-
-
+        if not txt.strip(): st.warning("Please enter a comment to analyze.")
         else:
-
-
-
             model, tokenizer = load_assets()
-
-
-
             out = model(**tokenizer([txt], return_tensors="pt")).logits
-
-
-
             probs = torch.softmax(out, dim=1).detach().numpy()[0]
-
-
-
             p = torch.argmax(out, dim=1).item()
-
-
-
-
-
-
-
             col_res, col_chart = st.columns(2)
-
-
-
             with col_res:
-
-
-
                 labels = ["Negative 😡", "Neutral 😐", "Positive 😊"]
-
-
-
                 st.markdown(f"### Result: {labels[p]}")
-
-
-
                 st.metric("Confidence Score", f"{probs[p] * 100:.2f}%")
-
-
-
-                
-
-
-
-                # Dynamic interpretation message
-
-
-
-                if probs[p] > 0.8:
-
-
-
-                    st.info("The model is highly confident in this classification.")
-
-
-
-                elif probs[p] < 0.5:
-
-
-
-                    st.warning("The model's confidence is low; this comment may be ambiguous.")
-
-
-
-                    
-
-
-
+                if probs[p] > 0.8: st.info("The model is highly confident in this classification.")
+                elif probs[p] < 0.5: st.warning("The model's confidence is low; this comment may be ambiguous.")
             with col_chart:
-
-
-
-                fig_bar = px.bar(x=["Negative", "Neutral", "Positive"], y=probs,
-
-
-
-                                 color=["Negative", "Neutral", "Positive"],
-
-
-
-                                 color_discrete_map={"Negative": "#D32F2F", "Neutral": "#FFC107",
-
-
-
-                                                     "Positive": "#2E7D32"})
-
-
-
+                fig_bar = px.bar(x=["Negative", "Neutral", "Positive"], y=probs, color=["Negative", "Neutral", "Positive"],
+                                 color_discrete_map={"Negative": "#D32F2F", "Neutral": "#FFC107", "Positive": "#2E7D32"})
                 fig_bar.update_layout(showlegend=False, height=300)
-
-
-
                 st.plotly_chart(fig_bar, use_container_width=True)
