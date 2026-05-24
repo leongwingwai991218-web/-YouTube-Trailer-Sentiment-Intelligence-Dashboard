@@ -27,21 +27,15 @@ def load_assets():
     model.eval()
     return model, tokenizer
 
-# --- ANALYSIS LOGIC (Optimized) ---
+# --- ANALYSIS LOGIC ---
 @st.cache_data(ttl=3600)
 def analyze_trailer(url, max_comments):
-    # Optimized: Limit comments at the source to speed up scraping
-    ydl_opts = {
-        'quiet': True, 
-        'getcomments': True,
-        'extractor_args': {'youtube': {'max_comments': max_comments}}
-    }
-    
+    ydl_opts = {'quiet': True, 'getcomments': True}
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
         info = ydl.extract_info(url, download=False)
         comments_data = info.get('comments') or []
         
-        # Sort by latest
+        # Sort by timestamp (Newest first) and limit
         sorted_comments = sorted(comments_data, key=lambda x: x.get('timestamp', 0), reverse=True)
         texts = [c.get('text', '') for c in sorted_comments][:max_comments]
 
@@ -58,7 +52,6 @@ def analyze_trailer(url, max_comments):
     model, tokenizer = load_assets()
     if model is None: return None, meta
         
-    # Batch processing for speed
     batch_size = 50
     preds, probs_max = [], []
     for i in range(0, len(texts), batch_size):
@@ -82,53 +75,52 @@ with tab1:
     max_c = col_b.slider("Number of comments to analyze", 50, 500, 100)
 
     if st.button("Run Sentiment Analysis", type="primary"):
-        with st.spinner("Fetching comments..."):
+        with st.spinner("Analyzing latest comments..."):
             df, meta = analyze_trailer(url, max_c)
-            
-        if df is None:
-            st.error("No comments found or model failed to load.")
-        else:
-            c_img, c_text = st.columns([1, 4])
-            c_img.image(meta['thumb'], use_container_width=True)
-            c_text.subheader(meta['title'])
-            c_text.write(f"**Channel:** {meta['uploader']} | **Views:** {meta['views']:,}")
+            if df is None:
+                st.error("No comments found or model failed to load.")
+            else:
+                c_img, c_text = st.columns([1, 4])
+                c_img.image(meta['thumb'], use_container_width=True)
+                c_text.subheader(meta['title'])
+                c_text.write(f"**Channel:** {meta['uploader']} | **Views:** {meta['views']:,}")
 
-            m1, m2, m3, m4 = st.columns(4)
-            m1.metric("Sentiment Index", f"{(df['sentiment'] == 'Positive').mean() * 100 - (df['sentiment'] == 'Negative').mean() * 100:.1f}")
-            m2.metric("Advocacy Rate", f"{(df['sentiment'] == 'Positive').mean() * 100:.1f}%")
-            m3.metric("Friction Index", f"{(df['sentiment'] == 'Negative').mean() * 100:.1f}%")
-            m4.metric("Neutral Fatigue", f"{(df['sentiment'] == 'Neutral').mean() * 100:.1f}%")
+                m1, m2, m3, m4 = st.columns(4)
+                m1.metric("Sentiment Index", f"{(df['sentiment'] == 'Positive').mean() * 100 - (df['sentiment'] == 'Negative').mean() * 100:.1f}")
+                m2.metric("Advocacy Rate", f"{(df['sentiment'] == 'Positive').mean() * 100:.1f}%")
+                m3.metric("Friction Index", f"{(df['sentiment'] == 'Negative').mean() * 100:.1f}%")
+                m4.metric("Neutral Fatigue", f"{(df['sentiment'] == 'Neutral').mean() * 100:.1f}%")
 
-            st.subheader("Recency Sentiment Momentum")
-            g1, g2 = st.columns([2, 1])
-            momentum_score = max(0, min(100, 50 + (((df['sentiment'] == 'Positive').mean() * 100 - (df['sentiment'] == 'Negative').mean() * 100) * 0.3)))
-            num_color = "#D32F2F" if momentum_score < 33 else "#FFC107" if momentum_score < 66 else "#2E7D32"
-            with g1:
-                fig_gauge = go.Figure(go.Indicator(
-                    mode="gauge+number", value=round(momentum_score, 1),
-                    number={'font': {'color': num_color, 'size': 50}},
-                    gauge={'axis': {'range': [0, 100]}, 'bar': {'color': num_color},
-                           'steps': [{'range': [0, 33], 'color': "#F8D7DA"}, {'range': [33, 66], 'color': "#FFF3CD"}, {'range': [66, 100], 'color': "#D4EDDA"}]}
-                ))
-                fig_gauge.update_layout(height=250, margin=dict(l=20, r=20, t=20, b=20))
-                st.plotly_chart(fig_gauge, use_container_width=True)
-            with g2:
-                st.markdown("""<div style="margin-top: 50px;"><b>Momentum Guide:</b><br>🔴 Critical friction (0-33)<br>🟡 Engagement tepid (34-66)<br>🟢 High advocacy (67-100)</div>""", unsafe_allow_html=True)
+                st.subheader("Recency Sentiment Momentum")
+                g1, g2 = st.columns([2, 1])
+                momentum_score = max(0, min(100, 50 + (((df['sentiment'] == 'Positive').mean() * 100 - (df['sentiment'] == 'Negative').mean() * 100) * 0.3)))
+                num_color = "#D32F2F" if momentum_score < 33 else "#FFC107" if momentum_score < 66 else "#2E7D32"
+                with g1:
+                    fig_gauge = go.Figure(go.Indicator(
+                        mode="gauge+number", value=round(momentum_score, 1),
+                        number={'font': {'color': num_color, 'size': 50}},
+                        gauge={'axis': {'range': [0, 100]}, 'bar': {'color': num_color},
+                               'steps': [{'range': [0, 33], 'color': "#F8D7DA"}, {'range': [33, 66], 'color': "#FFF3CD"}, {'range': [66, 100], 'color': "#D4EDDA"}]}
+                    ))
+                    fig_gauge.update_layout(height=250, margin=dict(l=20, r=20, t=20, b=20))
+                    st.plotly_chart(fig_gauge, use_container_width=True)
+                with g2:
+                    st.markdown("""<div style="margin-top: 50px;"><b>Momentum Guide:</b><br>🔴 Critical friction (0-33)<br>🟡 Engagement tepid (34-66)<br>🟢 High advocacy (67-100)</div>""", unsafe_allow_html=True)
 
-            row2_col1, row2_col2 = st.columns(2)
-            with row2_col1:
-                st.subheader("Buzzword Cloud")
-                clean_text = "".join([char for char in " ".join(df['text']) if ord(char) < 128])
-                wc = WordCloud(width=800, height=400, background_color='white').generate(clean_text)
-                st.image(wc.to_array(), use_container_width=True)
-            with row2_col2:
-                st.subheader("Sentiment Distribution")
-                fig_hist = px.histogram(df, x="sentiment", color="sentiment", height=400,
-                                        color_discrete_map={"Negative": "#D32F2F", "Neutral": "#FFC107", "Positive": "#2E7D32"})
-                st.plotly_chart(fig_hist, use_container_width=True)
+                row2_col1, row2_col2 = st.columns(2)
+                with row2_col1:
+                    st.subheader("Buzzword Cloud")
+                    clean_text = "".join([char for char in " ".join(df['text']) if ord(char) < 128])
+                    wc = WordCloud(width=800, height=400, background_color='white').generate(clean_text)
+                    st.image(wc.to_array(), use_container_width=True)
+                with row2_col2:
+                    st.subheader("Sentiment Distribution")
+                    fig_hist = px.histogram(df, x="sentiment", color="sentiment", height=400,
+                                            color_discrete_map={"Negative": "#D32F2F", "Neutral": "#FFC107", "Positive": "#2E7D32"})
+                    st.plotly_chart(fig_hist, use_container_width=True)
 
-            st.subheader("📋 Detailed Comment Analysis (Newest First)")
-            st.dataframe(df[['text', 'sentiment', 'conf']], use_container_width=True)
+                st.subheader("📋 Detailed Comment Analysis (Newest First)")
+                st.dataframe(df[['text', 'sentiment', 'conf']], use_container_width=True)
 
 with tab2:
     st.subheader("Individual Comment Check")
@@ -146,7 +138,4 @@ with tab2:
                 st.markdown(f"### Result: {['Negative 😡', 'Neutral 😐', 'Positive 😊'][p]}")
                 st.metric("Confidence Score", f"{probs[p] * 100:.2f}%")
             with col_chart:
-                fig_bar = px.bar(x=["Negative", "Neutral", "Positive"], y=probs, color=["Negative", "Neutral", "Positive"],
-                                 color_discrete_map={"Negative": "#D32F2F", "Neutral": "#FFC107", "Positive": "#2E7D32"})
-                fig_bar.update_layout(showlegend=False, height=300)
-                st.plotly_chart(fig_bar, use_container_width=True)
+                fig_bar = px.bar(x=["Negative", "Neutral", "Positive"], y=probs,
