@@ -153,4 +153,31 @@ with tab1:
 
                 st.divider()
                 st.subheader("📋 Detailed Comment Audit")
-                st.dataframe(df[['text', 'sentiment
+                st.dataframe(df[['text', 'sentiment', 'conf']], use_container_width=True)
+
+with tab2:
+    st.subheader("Individual Comment Audit")
+    txt = st.text_area(
+        "Enter a comment to analyze:",
+        placeholder="e.g., 'This movie looks amazing, can't wait to watch it with my friends!'"
+    )
+    if st.button("Analyze"):
+        if not txt.strip():
+            st.warning("Please enter a comment to analyze.")
+        else:
+            model, tokenizer = load_assets()
+            out = model(**tokenizer([txt], return_tensors="pt")).logits
+            probs = torch.softmax(out, dim=1).detach().numpy()[0]
+            p = torch.argmax(out, dim=1).item()
+
+            col_res, col_chart = st.columns(2)
+            with col_res:
+                labels = ["Negative 😡", "Neutral 😐", "Positive 😊"]
+                st.markdown(f"### Result: {labels[p]}")
+                st.metric("Confidence Score", f"{probs[p] * 100:.2f}%")
+            with col_chart:
+                fig_bar = px.bar(x=["Negative", "Neutral", "Positive"], y=probs,
+                                 color=["Negative", "Neutral", "Positive"],
+                                 color_discrete_map={"Negative": "#D32F2F", "Neutral": "#FFC107",
+                                                     "Positive": "#2E7D32"})
+                st.plotly_chart(fig_bar, use_container_width=True)
