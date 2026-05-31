@@ -9,17 +9,19 @@ from transformers import AutoTokenizer
 from wordcloud import WordCloud
 import gdown
 import os
-import gc
 
 # --- CONFIGURATION ---
-st.set_page_config(layout="wide", page_title="YouTube Trailer Sentiment Intelligence Dashboard")
+st.set_page_config(layout="wide", page_title="YouTube Trailer Sentiment Intelligence")
 
-# --- MEMORY-EFFICIENT ASSET LOADING ---
-def get_assets():
+# --- STABLE ASSET LOADING ---
+@st.cache_resource
+def load_assets():
+    """Loads model once and keeps it in memory using cache_resource."""
     model_path = 'model.pkl'
     if not os.path.exists(model_path):
-        url = 'https://drive.google.com/file/d/13Lb2WECIxXT5NpayZVRx2wXerp8O65fF/view?usp=drive_link'
-        gdown.download(url, model_path, quiet=True)
+        # Ensure this link is public: Anyone with link -> Viewer
+        url = 'https://drive.google.com/uc?id=13Lb2WECIxXT5NpayZVRx2wXerp8O65fF'
+        gdown.download(url, model_path, quiet=False)
     
     model = joblib.load(model_path)
     tokenizer = AutoTokenizer.from_pretrained('distilbert-base-uncased')
@@ -34,11 +36,16 @@ def analyze_trailer(url, max_comments):
         'getcomments': True, 
         'skip_download': True,
         'ignoreerrors': True,
-        'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36'
+        'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
     }
     
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
         info = ydl.extract_info(url, download=False)
+        
+        # --- ROBUSTNESS GUARD ---
+        if not isinstance(info, dict) or 'comments' not in info:
+            return None, None
+            
         comments_data = info.get('comments', [])
         
         sorted_comments = sorted(comments_data, key=lambda x: x.get('timestamp', 0), reverse=True)
@@ -53,22 +60,18 @@ def analyze_trailer(url, max_comments):
             'views': info.get('view_count', 0)
         }
 
-    # Load model JIT to save memory
-    model, tokenizer = get_assets()
+    model, tokenizer = load_assets()
     
-    batch_size = 25 
+    # Batch processing
+    batch_size = 32
     preds, probs_max = [], []
     for i in range(0, len(texts), batch_size):
         inputs = tokenizer(texts[i:i + batch_size], return_tensors="pt", padding=True, truncation=True, max_length=128)
-        with torch.inference_mode():
+        with torch.no_grad():
             outputs = model(**inputs).logits
             preds.extend(torch.argmax(outputs, dim=1).numpy())
-            probs_max.extend(torch.softmax(outputs, dim=1).detach().numpy().max(axis=1))
-        del inputs, outputs
-    
-    del model, tokenizer
-    gc.collect()
-    
+            probs_max.extend(torch.softmax(outputs, dim=1).max(dim=1).values.numpy())
+        
     df = pd.DataFrame({'text': texts, 'sentiment': [["Negative", "Neutral", "Positive"][p] for p in preds], 'conf': probs_max})
     return df, meta
 
@@ -84,7 +87,7 @@ with tab1:
     if st.button("Run Sentiment Analysis", type="primary"):
         with st.spinner("Analyzing..."):
             df, meta = analyze_trailer(url, max_c)
-            if df is None: st.error("No comments found.")
+            if df is None: st.error("No comments found or invalid URL.")
             else:
                 c_img, c_text = st.columns([1, 4])
                 c_img.image(meta['thumb'], use_container_width=True)
@@ -130,15 +133,9 @@ with tab1:
 
 with tab2:
     st.subheader("Individual Comment Check")
-    st.markdown("""
-    **Sentiment Scale Guide:**
-    * **Negative 😡**: High levels of criticism, sarcasm, or dissatisfaction.
-    * **Neutral 😐**: Factual statements, questions, or non-emotional engagement.
-    * **Positive 😊**: Praise, excitement, or strong endorsement.
-    """)
-    txt = st.text_area("Enter a comment to analyze:", placeholder="e.g., 'This movie looks amazing, can't wait to watch it!'")
+    txt = st.text_area("Enter a comment to analyze:")
     if st.button("Analyze"):
-        if not txt.strip(): st.warning("Please enter a comment to analyze.")
+        if not txt.strip(): st.warning("Please enter a comment.")
         else:
             model, tokenizer = load_assets()
             out = model(**tokenizer([txt], return_tensors="pt")).logits
@@ -146,11 +143,8 @@ with tab2:
             p = torch.argmax(out, dim=1).item()
             col_res, col_chart = st.columns(2)
             with col_res:
-                labels = ["Negative 😡", "Neutral 😐", "Positive 😊"]
-                st.markdown(f"### Result: {labels[p]}")
+                st.markdown(f"### Result: {['Negative 😡', 'Neutral 😐', 'Positive 😊'][p]}")
                 st.metric("Confidence Score", f"{probs[p] * 100:.2f}%")
-                if probs[p] > 0.8: st.info("The model is highly confident in this classification.")
-                elif probs[p] < 0.5: st.warning("The model's confidence is low; this comment may be ambiguous.")
             with col_chart:
                 fig_bar = px.bar(x=["Negative", "Neutral", "Positive"], y=probs, color=["Negative", "Neutral", "Positive"],
                                  color_discrete_map={"Negative": "#D32F2F", "Neutral": "#FFC107", "Positive": "#2E7D32"})
