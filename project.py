@@ -20,7 +20,7 @@ def load_assets():
     model_path = 'model.pkl'
     if not os.path.exists(model_path):
         # Ensure this link is public: Anyone with link -> Viewer
-        url = 'https://drive.google.com/file/d/10SZBq3tlALt0bTC78VMj-orKFSOSVCRs/view?usp=drive_link'
+        url = 'https://drive.google.com/file/d/10SZBq3tlALt0bTC78VMj-orKFSOSVCRs'
         gdown.download(url, model_path, quiet=False)
     
     model = joblib.load(model_path)
