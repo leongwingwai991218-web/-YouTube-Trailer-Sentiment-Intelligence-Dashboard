@@ -18,7 +18,7 @@ st.set_page_config(layout="wide", page_title="YouTube Trailer Sentiment Intellig
 def get_assets():
     model_path = 'model.pkl'
     if not os.path.exists(model_path):
-        url = 'https://drive.google.com/file/d/10SZBq3tlALt0bTC78VMj-orKFSOSVCRs/view?usp=drive_link'
+        url = 'https://drive.google.com/file/d/13Lb2WECIxXT5NpayZVRx2wXerp8O65fF/view?usp=drive_link'
         gdown.download(url, model_path, quiet=True)
     
     model = joblib.load(model_path)
